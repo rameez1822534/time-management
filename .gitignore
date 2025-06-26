@@ -1,0 +1,29 @@
+# Python virtual environment
+venv/
+ENV/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Editor/IDE files
+.vscode/
+.idea/
+.DS_Store
+
+# Environment and config files (sensitive)
+*.pem
+*.key
+*.env
+*.ini
+config.py
+vault_secrets.py
+
+# Logs and local databases
+*.log
+*.sqlite3
+
+# OS metadata
+Thumbs.db
