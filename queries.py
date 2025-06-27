@@ -48,15 +48,16 @@ def time_entry(data):
         lunch_parts = list(map(int, data["lunch_break"].split(":")))
         lunch = timedelta(hours=lunch_parts[0], minutes=lunch_parts[1])
         worked_time = end - start - lunch
-        worked_hours_interval = timedelta(seconds=worked_time.total_seconds())
+        #worked_hours_interval = timedelta(seconds=worked_time.total_seconds())
 
         # Insert time entry
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO time_report (
                 consultant_id, consultant_name, customer_name,
                 start_time, end_time, lunch_break
             ) VALUES (%s, %s, %s, %s, %s, %s)
-        """, (
+            """, (
             data["consultant_id"],
             data["consultant_name"],
             data["customer_name"],
@@ -66,22 +67,24 @@ def time_entry(data):
         ))
 
         # Insert or update consultant balance
-        cur.execute("""
-            INSERT INTO consultant_balances (consultant_name, customer_name, total_hours)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (consultant_name, customer_name)
-            DO UPDATE SET total_hours = consultant_balances.total_hours + EXCLUDED.total_hours
-        """, (
+        cur.execute(
+            """
+            INSERT INTO time_summary (consultant_id, consultant_name, customer_name, working_hours)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (consultant_id, customer_name)
+            DO UPDATE SET working_hours = time_summary.working_hours + EXCLUDED.working_hours
+            """, (
+            data["consultant_id"],
             data["consultant_name"],
             data["customer_name"],
-            worked_hours_interval
+            worked_time
         ))
 
         con.commit()        
         cur.close()
         con.close()          
 
-        return jsonify({"message": f"{worked_hours_interval} hours logged successfully!"}), 201
+        return jsonify({"message": f"{worked_time} hours logged successfully!"}), 201
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -94,50 +97,58 @@ def generate_report():
         cur = conn.cursor()
 
         # --- DAILY HOURS ---
-        cur.execute("""
+        cur.execute(
+            """
             SELECT DATE(start_time) AS day, consultant_name, customer_name,
-                   ROUND(EXTRACT(EPOCH FROM SUM(end_time - start_time - lunch_break)) / 3600, 2) AS hours
+                ROUND(EXTRACT(EPOCH FROM SUM(end_time - start_time - lunch_break)) / 3600, 2) AS working_hours
             FROM time_report
             GROUP BY day, consultant_name, customer_name
             ORDER BY day, consultant_name;
-        """)
+            """
+        )
         daily = cur.fetchall()
 
         # --- AVERAGE HOURS PER CONSULTANT ---
-        cur.execute("""
+        cur.execute(
+            """
             SELECT consultant_name,
-                   ROUND(AVG(daily_hours), 2) AS avg_daily
+                ROUND(AVG(daily_hours), 2) AS avg_daily
             FROM (
                 SELECT consultant_name, DATE(start_time) AS day,
-                       EXTRACT(EPOCH FROM SUM(end_time - start_time - lunch_break)) / 3600 AS daily_hours
+                    EXTRACT(EPOCH FROM SUM(end_time - start_time - lunch_break)) / 3600 AS daily_hours
                 FROM time_report
                 GROUP BY consultant_name, day
             ) AS sub
             GROUP BY consultant_name
             ORDER BY consultant_name;
-        """)
+            """
+            )
         avg = cur.fetchall()
 
         # --- WEEKLY TOTALS ---
-        cur.execute("""
+        cur.execute(
+            """
             SELECT DATE_TRUNC('week', start_time)::date AS week_start,
-                   consultant_name,
-                   customer_name,
-                   ROUND(EXTRACT(EPOCH FROM SUM(end_time - start_time - lunch_break)) / 3600, 2) AS hours
+                consultant_name,
+                customer_name,
+                ROUND(EXTRACT(EPOCH FROM SUM(end_time - start_time - lunch_break)) / 3600, 2) AS working_hours
             FROM time_report
             GROUP BY week_start, consultant_name, customer_name
             ORDER BY week_start, consultant_name;
-        """)
+            """
+            )
         weekly = cur.fetchall()
 
         # --- CUMULATIVE TOTAL BY CUSTOMER ---
-        cur.execute("""
+        cur.execute(
+            """
             SELECT customer_name,
-                   ROUND(EXTRACT(EPOCH FROM SUM(end_time - start_time - lunch_break)) / 3600, 2) AS total
+                ROUND(EXTRACT(EPOCH FROM SUM(end_time - start_time - lunch_break)) / 3600, 2) AS total_working_hours
             FROM time_report
             GROUP BY customer_name
             ORDER BY customer_name;
-        """)
+            """
+            )
         cumulative = cur.fetchall()
 
         # --- FORMAT REPORT ---
